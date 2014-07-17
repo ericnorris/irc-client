@@ -1,56 +1,49 @@
-var message = module.exports = function(ircMessage) {
-    if (!(this instanceof message)) {
-        return new message(ircMessage);
-    }
-
-    if (ircMessage instanceof Object) {
-        this.servername = ircMessage.servername;
-        this.nickname = ircMessage.nickname;
-        this.user = ircMessage.user;
-        this.host = ircMessage.host;
-        this.command = ircMessage.command;
-        this.parameters = ircMessage.parameters;
-        this.raw = this.toString();
-    } else {   
-        this.raw = ircMessage;
-        parseMessage.call(this, ircMessage);
+var ircmessage = module.exports = function(objectOrString) {
+    if (objectOrString instanceof Object) {
+        return messageToString(objectOrString)
+    } else {
+        return stringToMessage(objectOrString);
     }
 };
 
-message.prototype.toString = function() {
+function messageToString(object) {
     var result = "";
-    if (this.servername) {
-        result = ':' + this.servername + ' '
-    } else if (this.nickname) {
-        result = ':' + this.nickname;
-        result += (this.user ? '!' + this.user : '');
-        result += (this.host ? '@' + this.host : '');
+    if (object.servername) {
+        result = ':' + object.servername + ' '
+    } else if (object.nickname) {
+        result = ':' + object.nickname;
+        result += (object.user ? '!' + object.user : '');
+        result += (object.host ? '@' + object.host : '');
         result += ' ';
     }
 
-    result += this.command;
-    if (parameters.length) {
-        if (parameters.length > 1) {
-            result += ' ' + parameters.slice(0, -1).join(' ');
+    result += object.command;
+    if (object.parameters && object.parameters.length) {
+        if (object.parameters.length > 1) {
+            result += ' ' + object.parameters.slice(0, -1).join(' ');
         }
 
-        result += ' :' + parameters[parameters.length];
+        result += ' :' + object.parameters[object.parameters.length - 1];
     }
 
     return result + '\r\n';
-};
+}
 
-function parseMessage(ircMessage) {
-    ircMessage = parsePrefix.call(this, ircMessage);
-    ircMessage = parseCommand.call(this, ircMessage);
-    ircMessage = parseParameters.call(this, ircMessage);
+function stringToMessage(ircMessage) {
+    var result = { raw: ircMessage };
+
+    ircMessage = parsePrefix.call(result, ircMessage);
+    ircMessage = parseCommand.call(result, ircMessage);
+    ircMessage = parseParameters.call(result, ircMessage);
+
+    return result;
 }
 
 function parsePrefix(ircMessage) {
     if (ircMessage.charAt(0) == ':') {
         var prefixEnd = ircMessage.indexOf(' '),
-            prefix = ircMessage.slice(0, prefixEnd),
-            prefixSplit = prefix.split('!@');
+            prefix = ircMessage.slice(1, prefixEnd),
+            prefixSplit = prefix.split(/[!@]/);
 
         this.prefix = prefix;
         switch (prefixSplit.length) {
@@ -100,7 +93,6 @@ function parseParameters(ircMessage) {
     this.parameters = parameters;
 }
 
-// -- Util --
 function parseUntilSpace(ircMessage) {
     var end = ircMessage.indexOf(' '),
         end = end == -1 ? ircMessage.length : end;
