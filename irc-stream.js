@@ -43,8 +43,7 @@ var ircstream = module.exports = function(stream) {
 util.inherits(ircstream, duplex);
 
 ircstream.prototype._write = function(object, encoding, callback) {
-    this._writable.write(ircmessage(object));
-    callback();
+    this._writable.write(ircmessage(object), callback);
 };
 
 ircstream.prototype._read = function() {
