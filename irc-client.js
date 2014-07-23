@@ -2,6 +2,7 @@ var net = require('net');
 var util = require('util');
 var events = require('events');
 var debug = require('debug');
+var q = require('q');
 var defaults = require('./defaults');
 var ircstream = require('./irc-stream');
 var irccodes = require('./irc-codes')
@@ -33,7 +34,7 @@ util.inherits(client, events.EventEmitter);
 client.prototype.connect = function() {
     var self = this;
 
-    this._socket = net.connect(this.options, function() {
+    this._socket = net.connect(this.options, function afterConnect() {
         self._ircstream = ircstream(self._socket);
         self._ircstream.on('readable', emitMessagesOnReadable);
 
@@ -52,51 +53,131 @@ client.prototype.connect = function() {
             self.emit('message', data);
             self.emit(data.command, data);
         }
-    }
+    };
 
     function respondToPing(message) {
         this._ircstream.write({command: 'PONG', parameters: message.parameters});
-    }
+    };
 };
 
 client.prototype.nick = function(nick) {
-    this._until(['NICK', irccodes.RPL_WELCOME], function(message) {
-        if ((message.command == irccodes.RPL_WELCOME) || 
-            (message.command == 'NICK' && message.nickname == this.currentNick)) {
-            var actualNick = message.parameters.shift();
+    // TODO: same-nick check
 
-            this.currentNick = actualNick ? actualNick : this.currentNick;
-            return true;
+    var deferred = q.defer();
+    var promise = deferred.promise;
+    var nickRetryCount = 1;
+
+    function success(message) {
+        if (message.command == 'NICK' && message.nickname != this.currentNick) {
+            return;
         }
 
-        return false;
-    });
+        this.currentNick = message.parameters.shift();
+        deferred.resolve();
+    };
 
+    function error(message) {
+        if (message.command == irccodes.ERR_NICKNAMEINUSE) {
+            this._ircstream.write({command: 'NICK', parameters:[nick + nickRetryCount]});
+        } else {
+            deferred.reject(irccodes[message.command]);
+        }
+    };
+
+    var successEvents = ['NICK', irccodes.RPL_WELCOME];
+    var errorEvents = [
+        irccodes.ERR_NONICKNAMEGIVEN,
+        irccodes.ERR_NICKNAMEINUSE,
+        irccodes.ERR_UNAVAILRESOURCE,
+        irccodes.ERR_ERRONEUSNICKNAME,
+        irccodes.ERR_NICKCOLLISION,
+        irccodes.ERR_RESTRICTED
+    ];
+
+    this._addListeners(successEvents, success);
+    this._addListeners(errorEvents, error);
     this._ircstream.write({command: 'NICK', parameters: [nick]});
-    
+
+    var self = this;
+    return promise.finally(function() {
+        self._removeListeners(successEvents, success);
+        self._removeListeners(errorEvents, error);
+    });
 };
 
 client.prototype.join = function(channel) {
-    this._until(['JOIN'], function(message) {
-        if (message.command == 'JOIN' && message.nickname == this.currentNick) {
-            this._debug('joined ' + channel);
+    var deferred = q.defer();
+    var promise = deferred.promise;
 
-            return true;
+    function success(message) {
+        var joinedDesiredChannel =
+                message.nickname == this.currentNick &&
+                message.parameters.shift() == channel;
+
+        if (joinedDesiredChannel) {
+            deferred.resolve();
         }
-    });
+    };
 
+    function error(message) {
+        deferred.reject(irccodes[message.command]);
+    };
+
+    var successEvents = ['JOIN'];
+    var errorEvents = [
+        irccodes.ERR_NEEDMOREPARAMS,
+        irccodes.ERR_BANNEDFROMCHAN,
+        irccodes.ERR_INVITEONLYCHAN,
+        irccodes.ERR_BADCHANNELKEY,
+        irccodes.ERR_CHANNELISFULL,
+        irccodes.ERR_BADCHANMASK,
+        irccodes.ERR_NOSUCHCHANNEL,
+        irccodes.ERR_TOOMANYCHANNELS,
+        irccodes.ERR_TOOMANYTARGETS,
+        irccodes.ERR_UNAVAILRESOURCE
+    ];
+
+    this._addListeners(successEvents, success);
+    this._addListeners(errorEvents, error);
     this._ircstream.write({command: 'JOIN', parameters: [channel]});
+
+    var self = this;
+    return promise.finally(function() {
+        self._removeListeners(successEvents, success);
+        self._removeListeners(errorEvents, error);
+    });
 };
 
 client.prototype._user = function() {
-    this._until([irccodes.RPL_WELCOME], function(message) {
-        // should listen for errors as well
+    var deferred = q.defer();
+    var promise = deferred.promise;
+
+    function success(message) {
         this.emit('register');
-        this._debug('registered');
-        return true;
+        deferred.resolve();
+    };
+
+    function error(message) {
+        deferred.reject(irccodes[message.command]);
+    };
+
+    var successEvents = [irccodes.RPL_WELCOME];
+    var errorEvents = [
+        irccodes.ERR_NEEDMOREPARAMS,
+        irccodes.ERR_ALREADYREGISTRED
+    ];
+
+    this._addListeners(successEvents, success);
+    this._addListeners(errorEvents, error);
+    this._ircstream.write({command: 'USER', parameters:
+        [this.options.user, this.options.mode, '*', this.options.realName]
     });
 
-    this._ircstream.write({command: 'USER', parameters: ['test', 8, '*', 'test']});
+    var self = this;
+    return promise.finally(function() {
+        self._removeListeners(successEvents, success);
+        self._removeListeners(errorEvents, error);
+    });
 };
 
 client.prototype._addListeners = function(events, callback) {
@@ -110,12 +191,3 @@ client.prototype._removeListeners = function(events, callback) {
         this.removeListener(events[i], callback);
     }
 };
-
-client.prototype._until = function(events, callback) {
-    this._addListeners(events, function testCallback(data) {
-        var shouldStopListening = callback.call(this, data);
-        if (shouldStopListening) {
-            this._removeListeners(events, testCallback);
-        }
-    });
-}
