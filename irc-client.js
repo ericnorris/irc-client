@@ -32,9 +32,11 @@ var client = module.exports = function(options) {
 util.inherits(client, events.EventEmitter);
 
 client.prototype.connect = function() {
+    var deferred = q.defer();
+    var promise = deferred.promise;
     var self = this;
 
-    this._socket = net.connect(this.options, function afterConnect() {
+    function onConnect() {
         self._ircstream = ircstream(self._socket);
         self._ircstream.on('readable', emitMessagesOnReadable);
 
@@ -43,9 +45,14 @@ client.prototype.connect = function() {
         self._debug('Connected');
         self.emit('connect');
 
-        self.nick(self.currentNick);
-        self._user();
-    });
+        deferred.resolve(
+            q.all([self.nick(self.currentNick), self._user()])
+        );
+    };
+
+    function onError(errorObject) {
+        deferred.reject(errorObject);
+    };
 
     function emitMessagesOnReadable() {
         var data;
@@ -58,6 +65,22 @@ client.prototype.connect = function() {
     function respondToPing(message) {
         this._ircstream.write({command: 'PONG', parameters: message.parameters});
     };
+
+    this._socket = net.connect(this.options);
+    this._socket.once('connect', onConnect);
+    this._socket.once('error', onError);
+
+    return promise.then(function () {
+        self._debug('Registered');
+        self.emit('register');
+    }).catch(function(errorObject) {
+        self._debug(
+            'Error registering with IRC server. Error: \n' + errorObject
+        );
+    }).finally(function() {
+        self._socket.removeListener('connect', onConnect);
+        self._socket.removeListener('error', onError);
+    });
 };
 
 client.prototype.nick = function(nick) {
@@ -153,7 +176,6 @@ client.prototype._user = function() {
     var promise = deferred.promise;
 
     function success(message) {
-        this.emit('register');
         deferred.resolve();
     };
 
