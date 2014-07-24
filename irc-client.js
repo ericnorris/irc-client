@@ -17,7 +17,7 @@ var client = module.exports = function(options) {
     this.currentNick = this.options.nick;
 
     if (this.options.autoConnect) {
-        this.connect();
+        this.connect().done();
     }
 
     if (this.options.debug) {
@@ -169,6 +169,11 @@ client.prototype.join = function(channel) {
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
     });
+};
+
+client.prototype.privmsg = function(target, message) {
+    this._ircstream.write({command: 'PRIVMSG', parameters: [target, message]});
+    return this;
 };
 
 client.prototype._user = function() {
