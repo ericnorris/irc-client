@@ -46,7 +46,7 @@ client.prototype.connect = function() {
         self.emit('connect');
 
         deferred.resolve(
-            q.all([self.nick(self.currentNick), self._user()])
+            q.all([self.nick(self.currentNick), self._user()]).get(0)
         );
     };
 
@@ -96,7 +96,7 @@ client.prototype.nick = function(nick) {
         }
 
         this.currentNick = message.parameters.shift();
-        deferred.resolve();
+        deferred.resolve(this);
     };
 
     function error(message) {
@@ -138,7 +138,7 @@ client.prototype.join = function(channel) {
                 message.parameters.shift() == channel;
 
         if (joinedDesiredChannel) {
-            deferred.resolve();
+            deferred.resolve(this);
         }
     };
 
@@ -181,7 +181,7 @@ client.prototype._user = function() {
     var promise = deferred.promise;
 
     function success(message) {
-        deferred.resolve();
+        deferred.resolve(this);
     };
 
     function error(message) {
