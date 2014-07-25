@@ -43,7 +43,7 @@ client.prototype.connect = function() {
         self.on('PING', respondToPing);
 
         self._debug('Connected');
-        self.emit('connect');
+        self._emitNextTick('connect');
 
         deferred.resolve(
             q.all([self.nick(self.currentNick), self._user()]).get(0)
@@ -57,8 +57,8 @@ client.prototype.connect = function() {
     function emitMessagesOnReadable() {
         var data;
         while ((data = self._ircstream.read()) !== null) {
-            self.emit('message', data);
-            self.emit(data.command, data);
+            self._emitNextTick('message', data);
+            self._emitNextTick(data.command, data);
         }
     };
 
@@ -72,7 +72,7 @@ client.prototype.connect = function() {
 
     return promise.then(function () {
         self._debug('Registered');
-        self.emit('register');
+        self._emitNextTick('register');
     }).catch(function(errorObject) {
         self._debug(
             'Error registering with IRC server. Error: \n' + errorObject
@@ -91,11 +91,15 @@ client.prototype.nick = function(nick) {
     var nickRetryCount = 1;
 
     function success(message) {
-        if (message.command == 'NICK' && message.nickname != this.currentNick) {
+        var someoneElseChangedNick =
+                message.command == 'NICK' &&
+                message.nickname != this.currentNick;
+
+        if (someoneElseChangedNick) {
             return;
         }
 
-        this.currentNick = message.parameters.shift();
+        this.currentNick = message.parameters[0];
         deferred.resolve(this);
     };
 
@@ -135,7 +139,7 @@ client.prototype.join = function(channel) {
     function success(message) {
         var joinedDesiredChannel =
                 message.nickname == this.currentNick &&
-                message.parameters.shift() == channel;
+                message.parameters[0] == channel;
 
         if (joinedDesiredChannel) {
             deferred.resolve(this);
@@ -174,6 +178,106 @@ client.prototype.join = function(channel) {
 client.prototype.privmsg = function(target, message) {
     this._ircstream.write({command: 'PRIVMSG', parameters: [target, message]});
     return this;
+};
+
+client.prototype.whois = function(nick) {
+    var deferred = q.defer();
+    var promise = deferred.promise;
+    var whoisResult = {
+        nick: nick,
+        channels: [],
+        operatorChannels: [],
+        moderatedChannels: []
+    };
+
+    function bufferWhoisData(message) {
+        var otherWhois = (message.parameters[1] != nick);
+        if (otherWhois) {
+            return;
+        }
+
+        switch (message.command) {
+            case irccodes.RPL_AWAY:
+                whoisResult.away = message.parameters[2];
+            case irccodes.RPL_WHOISUSER:
+                whoisResult.user = message.parameters[2];
+                whoisResult.host = message.parameters[3];
+                whoisResult.realName = message.parameters[5];
+                break;
+            case irccodes.RPL_WHOISSERVER:
+                whoisResult.server = message.parameters[2];
+                whoisResult.serverInfo = message.parameters[3];
+                break;
+            case irccodes.RPL_WHOISOPERATOR:
+                whoisResult.operator = true;
+                break;
+            case irccodes.RPL_WHOISIDLE:
+                whoisResult.idleTime = message.parameters[2];
+                break;
+            case irccodes.RPL_WHOISCHANNELS:
+                var channelList = message.parameters[2].split(' ');
+
+                for (var i = 0; i < channelList.length; i++) {
+                    var channel = channelList[i];
+                    if (channel.charAt(0) == '@') {
+                        channel = channel.slice(1);
+                        whoisResult.operatorChannels.push(channel);
+                    } else if (channel.charAt(0) == '+') {
+                        channel = channel.slice(1);
+                        whoisResult.moderatedChannels.push(channel);
+                    }
+
+                    whoisResult.channels.push(channel);
+                }
+        }
+    };
+
+    function success(message) {
+        var otherWhois = (message.parameters[1] != nick);
+        if (!otherWhois) {
+            deferred.resolve(whoisResult);
+        }
+    };
+
+    function error(message) {
+        deferred.reject(irccodes[message.command]);
+    };
+
+    var bufferEvents = [
+        irccodes.RPL_AWAY,
+        irccodes.RPL_WHOISUSER,
+        irccodes.RPL_WHOISSERVER,
+        irccodes.RPL_WHOISOPERATOR,
+        irccodes.RPL_WHOISIDLE,
+        irccodes.RPL_WHOISCHANNELS
+    ];
+    var successEvents = [irccodes.RPL_ENDOFWHOIS];
+    var errorEvents = [
+        irccodes.ERR_NOSUCHSERVER,
+        irccodes.ERR_NONICKNAMEGIVEN,
+        irccodes.ERR_NOSUCHNICK
+    ];
+
+    this._addListeners(bufferEvents, bufferWhoisData);
+    this._addListeners(successEvents, success);
+    this._addListeners(errorEvents, error);
+    this._ircstream.write({command: 'WHOIS', parameters: [nick]});
+
+    var self = this;
+    return promise.finally(function() {
+        self._removeListeners(bufferEvents, bufferWhoisData);
+        self._removeListeners(successEvents, success);
+        self._removeListeners(errorEvents, error);
+    });
+};
+
+client.prototype._emitNextTick = function() {
+    var self = this;
+    var emitArgs = Array.prototype.slice.call(arguments);
+
+    process.nextTick(function() {
+        self.emit.apply(self, emitArgs);
+    });
 };
 
 client.prototype._user = function() {
