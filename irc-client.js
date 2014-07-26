@@ -15,6 +15,7 @@ var client = module.exports = function(options) {
 
     this.options = defaults.extend(options);
     this.currentNick = this.options.nick;
+    this.serverSupports = {};
 
     if (this.options.autoConnect) {
         this.connect().done();
@@ -41,6 +42,7 @@ client.prototype.connect = function() {
         self._ircstream.on('readable', emitMessagesOnReadable);
 
         self.on('PING', respondToPing);
+        self.on(irccodes.RPL_BOUNCE, checkForRPL_ISUPPORT);
 
         self._debug('Connected');
         self._emitNextTick('connect');
@@ -63,7 +65,36 @@ client.prototype.connect = function() {
     };
 
     function respondToPing(message) {
-        this._ircstream.write({command: 'PONG', parameters: message.parameters});
+        self._ircstream.write({command: 'PONG', parameters: message.parameters});
+    };
+
+    function checkForRPL_ISUPPORT(message) {
+        var parameters = message.parameters;
+        var isRPL_ISUPPORT =
+            (parameters[parameters.length - 1] == 'are supported by this server');
+
+        if (isRPL_ISUPPORT) {
+            var tokens = parameters.slice(1, -1);
+            var tokenRegex = /^(-)?(\w+)=?([!-~]+)?/;
+            var match;
+
+            for (var i = 0; i < tokens.length; i++) {
+                var token = tokens[i];
+                if (match = token.match(tokenRegex)) {
+                    var negation = match[1]
+                    var parameter = match[2];
+                    var value = match[3];
+
+                    if (negation) {
+                        delete this.serverSupports[parameter];
+                    } else if (value) {
+                        this.serverSupports[parameter] = value;
+                    } else {
+                        this.serverSupports[parameter] = true;
+                    }
+                }
+            }
+        }
     };
 
     this._socket = net.connect(this.options);
