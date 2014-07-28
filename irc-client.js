@@ -14,7 +14,6 @@ var client = module.exports = function(options) {
     events.EventEmitter.call(this);
 
     this.options = defaults.extend(options);
-    this.currentNick = this.options.nick;
     this.serverSupports = {};
 
     if (this.options.autoConnect) {
@@ -48,7 +47,7 @@ client.prototype.connect = function() {
         self._emitNextTick('connect');
 
         deferred.resolve(
-            q.all([self.nick(self.currentNick), self._user()]).get(0)
+            q.all([self.nick(self.options.nick), self._user()]).get(0)
         );
     };
 
@@ -115,11 +114,20 @@ client.prototype.connect = function() {
 };
 
 client.prototype.nick = function(nick) {
-    // TODO: same-nick check
-
     var deferred = q.defer();
     var promise = deferred.promise;
     var nickRetryCount = 1;
+
+    var maxNickLength = this.options.maxNickLength;
+    if (this.serverSupports['NICKLEN']) {
+        maxNickLength = this.serverSupports['NICKLEN'];
+    }
+
+    var isSameNick = (this.currentNick == nick.slice(0, maxNickLength));
+    if (isSameNick) {
+        deferred.resolve(this);
+        return promise;
+    }
 
     function success(message) {
         var someoneElseChangedNick =

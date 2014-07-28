@@ -2,10 +2,10 @@ var defaults = {};
 
 defaults.autoConnect = true;
 
-defaults.nick = 'irc_client';
-defaults.user = 'irc_client';
+defaults.nick = 'ircclient';
+defaults.user = 'ircclient';
 defaults.mode = 8;
-defaults.realName = 'irc_client';
+defaults.realName = 'irc client';
 
 defaults.host = 'localhost';
 defaults.port = 6667;
