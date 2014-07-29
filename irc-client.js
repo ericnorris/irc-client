@@ -129,6 +129,11 @@ client.prototype.nick = function(nick) {
         return promise;
     }
 
+    if (this._pendingNickChange) {
+        return this._pendingNickChange.invoke('nick', nick);
+    }
+    this._pendingNickChange = promise;
+
     function success(message) {
         var someoneElseChangedNick =
                 message.command == 'NICK' &&
@@ -168,6 +173,7 @@ client.prototype.nick = function(nick) {
     return promise.finally(function() {
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
+        self._pendingNickChange = null;
     });
 };
 
