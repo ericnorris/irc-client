@@ -15,6 +15,7 @@ var client = module.exports = function(options) {
 
     this.options = defaults.extend(options);
     this.serverSupports = {};
+    this._joinedChannels = [];
 
     if (this.options.autoConnect) {
         this.connect().done();
@@ -123,7 +124,8 @@ client.prototype.nick = function(nick) {
         maxNickLength = this.serverSupports['NICKLEN'];
     }
 
-    var isSameNick = (this.currentNick == nick.slice(0, maxNickLength));
+    var nick = nick.slice(0, maxNickLength);
+    var isSameNick = (this.currentNick == nick);
     if (isSameNick) {
         deferred.resolve(this);
         return promise;
@@ -180,6 +182,19 @@ client.prototype.nick = function(nick) {
 client.prototype.join = function(channel) {
     var deferred = q.defer();
     var promise = deferred.promise;
+    var self = this;
+
+    var maxChannelLength = this.options.maxChannelLength;
+    if (this.serverSupports['CHANNELLEN']) {
+        maxChannelLength = this.serverSupports['CHANNELLEN'];
+    }
+
+    var channel = channel.slice(0, maxChannelLength)
+    var inChannel = (this._joinedChannels[channel]);
+    if (inChannel) {
+        deferred.resolve(this);
+        return promise;
+    }
 
     function success(message) {
         var joinedDesiredChannel =
@@ -187,6 +202,7 @@ client.prototype.join = function(channel) {
                 message.parameters[0] == channel;
 
         if (joinedDesiredChannel) {
+            self._joinedChannels[channel] = true;
             deferred.resolve(this);
         }
     };
@@ -213,7 +229,6 @@ client.prototype.join = function(channel) {
     this._addListeners(errorEvents, error);
     this._ircstream.write({command: 'JOIN', parameters: [channel]});
 
-    var self = this;
     return promise.finally(function() {
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);

@@ -13,6 +13,7 @@ defaults.port = 6667;
 defaults.debug = false;
 
 defaults.maxNickLength = 9;
+defaults.maxChannelLength = 50;
 
 defaults.extend = function(object) {
     if (typeof object == 'object') {
