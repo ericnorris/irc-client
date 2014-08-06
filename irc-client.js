@@ -190,10 +190,17 @@ client.prototype.join = function(channel) {
     }
 
     var channel = channel.slice(0, maxChannelLength)
-    var inChannel = (this._joinedChannels[channel]);
+    var inChannel = this._joinedChannels[channel] ? true : false;
     if (inChannel) {
         deferred.resolve(this);
         return promise;
+    }
+
+    var joiningChannel = this._pendingChannels[channel] ? true : false;
+    if (joiningChannel) {
+        return this._pendingChannels[channel];
+    } else {
+        this._pendingChannels[channel] = promise;
     }
 
     function success(message) {
@@ -230,6 +237,7 @@ client.prototype.join = function(channel) {
     this._ircstream.write({command: 'JOIN', parameters: [channel]});
 
     return promise.finally(function() {
+        self._pendingChannels[channel] = null;
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
     });
