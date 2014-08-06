@@ -47,7 +47,7 @@ client.prototype.connect = function() {
         self._emitNextTick('connect');
 
         deferred.resolve(
-            q.all([self.nick(self.options.nick), self._user()]).get(0)
+            q.all([self.nick(self.options.nick), self.user()]).thenResolve(this)
         );
     };
 
@@ -176,6 +176,37 @@ client.prototype.nick = function(nick) {
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
         self._pendingNickChange = null;
+    });
+};
+
+client.prototype.user = function() {
+    var deferred = q.defer();
+    var promise = deferred.promise;
+
+    function success(message) {
+        deferred.resolve(this);
+    };
+
+    function error(message) {
+        deferred.reject(irccodes[message.command]);
+    };
+
+    var successEvents = [irccodes.RPL_WELCOME];
+    var errorEvents = [
+        irccodes.ERR_NEEDMOREPARAMS,
+        irccodes.ERR_ALREADYREGISTRED
+    ];
+
+    this._addListeners(successEvents, success);
+    this._addListeners(errorEvents, error);
+    this._ircstream.write({command: 'USER', parameters:
+        [this.options.user, this.options.mode, '*', this.options.realName]
+    });
+
+    var self = this;
+    return promise.finally(function() {
+        self._removeListeners(successEvents, success);
+        self._removeListeners(errorEvents, error);
     });
 };
 
@@ -345,37 +376,6 @@ client.prototype._emitNextTick = function() {
 
     process.nextTick(function() {
         self.emit.apply(self, emitArgs);
-    });
-};
-
-client.prototype._user = function() {
-    var deferred = q.defer();
-    var promise = deferred.promise;
-
-    function success(message) {
-        deferred.resolve(this);
-    };
-
-    function error(message) {
-        deferred.reject(irccodes[message.command]);
-    };
-
-    var successEvents = [irccodes.RPL_WELCOME];
-    var errorEvents = [
-        irccodes.ERR_NEEDMOREPARAMS,
-        irccodes.ERR_ALREADYREGISTRED
-    ];
-
-    this._addListeners(successEvents, success);
-    this._addListeners(errorEvents, error);
-    this._ircstream.write({command: 'USER', parameters:
-        [this.options.user, this.options.mode, '*', this.options.realName]
-    });
-
-    var self = this;
-    return promise.finally(function() {
-        self._removeListeners(successEvents, success);
-        self._removeListeners(errorEvents, error);
     });
 };
 
