@@ -14,21 +14,20 @@ var client = module.exports = function(options) {
     events.EventEmitter.call(this);
 
     this.options = defaults.extend(options);
+
+    if (this.options.debug) {
+        debug.enable('irc-client');
+    }
+
     this.serverSupports = {};
-    this._joinedChannels = [];
+    this._debug = debug('irc-client');
+    this._pendingNickChange = null;
+    this._joinedChannels = {};
+    this._pendingChannels = {};
 
     if (this.options.autoConnect) {
         this.connect().done();
     }
-
-    if (this.options.debug) {
-        debug.enable('irc-client');
-
-        this.on('message', function(message) {
-            this._debug(message.raw);
-        });
-    }
-    this._debug = debug('irc-client');
 };
 util.inherits(client, events.EventEmitter);
 
@@ -59,6 +58,7 @@ client.prototype.connect = function() {
     function emitMessagesOnReadable() {
         var data;
         while ((data = self._ircstream.read()) !== null) {
+            self._debug(data.raw);
             self._emitNextTick('message', data);
             self._emitNextTick(data.command, data);
         }

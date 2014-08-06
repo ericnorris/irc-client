@@ -29,15 +29,15 @@ var ircstream = module.exports = function(stream) {
     });
 
     self._readable.once('end', function() {
-        return self.push(null);
+        self.push(null);
     });
 
     self._writable.on('error', function(error) {
-      return self.emit('error', error);
+        self.emit('error', error);
     });
 
     self._readable.on('error', function(error) {
-      return self.emit('error', error);
+        self.emit('error', error);
     });
 }
 util.inherits(ircstream, duplex);
