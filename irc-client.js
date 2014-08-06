@@ -139,7 +139,7 @@ client.prototype.nick = function(nick) {
     function success(message) {
         var someoneElseChangedNick =
                 message.command == 'NICK' &&
-                message.nickname != this.currentNick;
+                message.nick != this.currentNick;
 
         if (someoneElseChangedNick) {
             return;
@@ -198,7 +198,7 @@ client.prototype.join = function(channel) {
 
     function success(message) {
         var joinedDesiredChannel =
-                message.nickname == this.currentNick &&
+                message.nick == this.currentNick &&
                 message.parameters[0] == channel;
 
         if (joinedDesiredChannel) {

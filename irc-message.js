@@ -10,8 +10,8 @@ function messageToString(object) {
     var result = "";
     if (object.servername) {
         result = ':' + object.servername + ' '
-    } else if (object.nickname) {
-        result = ':' + object.nickname;
+    } else if (object.nick) {
+        result = ':' + object.nick;
         result += (object.user ? '!' + object.user : '');
         result += (object.host ? '@' + object.host : '');
         result += ' ';
@@ -51,11 +51,11 @@ function parsePrefix(ircMessage) {
                 this.servername = prefixSplit[0];
                 break;
             case 2:
-                this.nickname = prefixSplit[0];
+                this.nick = prefixSplit[0];
                 this.host = prefixSplit[1];
                 break;
             case 3:
-                this.nickname = prefixSplit[0];
+                this.nick = prefixSplit[0];
                 this.user = prefixSplit[1];
                 this.host = prefixSplit[2];
                 break;
