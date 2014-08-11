@@ -15,6 +15,8 @@ defaults.debug = false;
 defaults.maxNickLength = 9;
 defaults.maxChannelLength = 50;
 
+defaults.quitMessage = 'tidal waves of emotion';
+
 defaults.extend = function(object) {
     if (typeof object == 'object') {
         Object.keys(object).forEach(function(key) {

@@ -382,6 +382,12 @@ client.prototype.whois = function(nick) {
     });
 };
 
+client.prototype.quit = function(quitMessage) {
+    var quitMessage = quitMessage ? quitMessage : this.options.quitMessage;
+
+    this._ircstream.write({command: 'QUIT', parameters: [quitMessage]});
+};
+
 client.prototype._emitNextTick = function() {
     var self = this;
     var emitArgs = Array.prototype.slice.call(arguments);
