@@ -243,11 +243,11 @@ client.prototype.join = function(channel) {
     };
 
     function error(message) {
-        var messageForSelf =
+        var messageIsRelevant =
                 message.parameters[0] == this.currentNick &&
                 message.parameters[1] == channel;
 
-        if (messageForSelf) {
+        if (messageIsRelevant) {
             deferred.reject(irccodes[message.command]);
         }
     };
@@ -272,6 +272,51 @@ client.prototype.join = function(channel) {
 
     return promise.finally(function() {
         self._pendingChannels[channel] = null;
+        self._removeListeners(successEvents, success);
+        self._removeListeners(errorEvents, error);
+    });
+};
+
+client.prototype.part = function(channel, message) {
+    var channel = this._trimChannel(channel);
+    var message = message ? message : '';
+    var deferred = q.defer();
+    var promise = deferred.promise;
+    var self = this;
+
+    function success(message) {
+        var succesfullyParted = 
+                message.nick = this.currentNick &&
+                message.parameters[0] == channel;
+
+        if (succesfullyParted) {
+            self._joinedChannels[channel] = false;
+            deferred.resolve(self);
+        }
+    };
+
+    function error(message) {
+        var messageIsRelevant =
+                message.parameters[0] == this.currentNick &&
+                message.parameters[1] == channel;
+
+        if (messageIsRelevant) {
+            deferred.reject(irccodes[message.command]);
+        }
+    };
+
+    var successEvents = ['PART'];
+    var errorEvents = [
+        irccodes.ERR_NEEDMOREPARAMS,
+        irccodes.ERR_NOSUCHCHANNEL,
+        irccodes.ERR_NOTONCHANNEL
+    ];
+
+    this._addListeners(successEvents, success);
+    this._addListeners(errorEvents, error);
+    this._ircstream.write({command: 'PART', parameters: [channel, message]});
+
+    return promise.finally(function() {
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
     });
