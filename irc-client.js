@@ -120,16 +120,11 @@ client.prototype.connect = function() {
 };
 
 client.prototype.nick = function(nick) {
+    var nick = this._trimNick(nick);
     var deferred = q.defer();
     var promise = deferred.promise;
     var nickRetryCount = 1;
 
-    var maxNickLength = this.options.maxNickLength;
-    if (this.serverSupports['NICKLEN']) {
-        maxNickLength = this.serverSupports['NICKLEN'];
-    }
-
-    var nick = nick.slice(0, maxNickLength);
     var isSameNick = (this.currentNick == nick);
     if (isSameNick) {
         deferred.resolve(this);
@@ -142,30 +137,30 @@ client.prototype.nick = function(nick) {
     this._pendingNickChange = promise;
 
     function success(message) {
-        var someoneElseChangedNick =
+        var succesfullyChangedNick =
                 message.command == 'NICK' &&
-                message.nick != this.currentNick;
+                message.nick == this.currentNick;
 
-        if (someoneElseChangedNick) {
-            return;
+        var isWelcomeMessage = (message.command == irccodes.RPL_WELCOME);
+
+        if (succesfullyChangedNick || isWelcomeMessage) {
+            this.currentNick = message.parameters[0];
+            deferred.resolve(this);
         }
-
-        this.currentNick = message.parameters[0];
-        deferred.resolve(this);
     };
 
+    function retryNickChange(message) {
+        this._ircstream.write({command: 'NICK', parameters: [nick + nickRetryCount]});
+    }
+
     function error(message) {
-        if (message.command == irccodes.ERR_NICKNAMEINUSE) {
-            this._ircstream.write({command: 'NICK', parameters:[nick + nickRetryCount]});
-        } else {
-            deferred.reject(irccodes[message.command]);
-        }
+        deferred.reject(irccodes[message.command]);
     };
 
     var successEvents = ['NICK', irccodes.RPL_WELCOME];
+    var retryEvents = [irccodes.ERR_NICKNAMEINUSE];
     var errorEvents = [
         irccodes.ERR_NONICKNAMEGIVEN,
-        irccodes.ERR_NICKNAMEINUSE,
         irccodes.ERR_UNAVAILRESOURCE,
         irccodes.ERR_ERRONEUSNICKNAME,
         irccodes.ERR_NICKCOLLISION,
@@ -173,12 +168,14 @@ client.prototype.nick = function(nick) {
     ];
 
     this._addListeners(successEvents, success);
+    this._addListeners(retryEvents, retryNickChange);
     this._addListeners(errorEvents, error);
     this._ircstream.write({command: 'NICK', parameters: [nick]});
 
     var self = this;
     return promise.finally(function() {
         self._removeListeners(successEvents, success);
+        self._removeListeners(retryEvents, retryNickChange);
         self._removeListeners(errorEvents, error);
         self._pendingNickChange = null;
     });
@@ -216,16 +213,11 @@ client.prototype.user = function() {
 };
 
 client.prototype.join = function(channel) {
+    var channel = this._trimChannel(channel);
     var deferred = q.defer();
     var promise = deferred.promise;
     var self = this;
 
-    var maxChannelLength = this.options.maxChannelLength;
-    if (this.serverSupports['CHANNELLEN']) {
-        maxChannelLength = this.serverSupports['CHANNELLEN'];
-    }
-
-    var channel = channel.slice(0, maxChannelLength)
     var inChannel = this._joinedChannels[channel] ? true : false;
     if (inChannel) {
         deferred.resolve(this);
@@ -251,7 +243,13 @@ client.prototype.join = function(channel) {
     };
 
     function error(message) {
-        deferred.reject(irccodes[message.command]);
+        var messageForSelf =
+                message.parameters[0] == this.currentNick &&
+                message.parameters[1] == channel;
+
+        if (messageForSelf) {
+            deferred.reject(irccodes[message.command]);
+        }
     };
 
     var successEvents = ['JOIN'];
@@ -293,10 +291,15 @@ client.prototype.whois = function(nick) {
         operatorChannels: [],
         moderatedChannels: []
     };
+    var self = this;
+
+    function messageIsRelevant(message) {
+        return (message.parameters[0] == self.currentNick &&
+                message.parameters[1] == nick);
+    }
 
     function bufferWhoisData(message) {
-        var otherWhois = (message.parameters[1] != nick);
-        if (otherWhois) {
+        if (!messageIsRelevant(message)) {
             return;
         }
 
@@ -319,7 +322,7 @@ client.prototype.whois = function(nick) {
                 whoisResult.idleTime = message.parameters[2];
                 break;
             case irccodes.RPL_WHOISCHANNELS:
-                var channelList = message.parameters[2].split(' ');
+                var channelList = message.parameters[2].split(' ').filter(String);
 
                 for (var i = 0; i < channelList.length; i++) {
                     var channel = channelList[i];
@@ -333,18 +336,23 @@ client.prototype.whois = function(nick) {
 
                     whoisResult.channels.push(channel);
                 }
+                break;
+            default:
+                // ignore
+                break;
         }
     };
 
     function success(message) {
-        var otherWhois = (message.parameters[1] != nick);
-        if (!otherWhois) {
+        if (messageIsRelevant(message)) {
             deferred.resolve(whoisResult);
         }
     };
 
     function error(message) {
-        deferred.reject(irccodes[message.command]);
+        if (messageIsRelevant(message)) {
+            deferred.reject(irccodes[message.command]);
+        }
     };
 
     var bufferEvents = [
@@ -367,7 +375,6 @@ client.prototype.whois = function(nick) {
     this._addListeners(errorEvents, error);
     this._ircstream.write({command: 'WHOIS', parameters: [nick]});
 
-    var self = this;
     return promise.finally(function() {
         self._removeListeners(bufferEvents, bufferWhoisData);
         self._removeListeners(successEvents, success);
@@ -382,6 +389,20 @@ client.prototype._emitNextTick = function() {
     process.nextTick(function() {
         self.emit.apply(self, emitArgs);
     });
+};
+
+client.prototype._trimNick = function(nick) {
+    var maxNickLength = this.serverSupports['NICKLEN'] |
+                        this.options.maxNickLength;
+
+    return nick.slice(0, maxNickLength);
+};
+
+client.prototype._trimChannel = function(channel) {
+    var maxChannelLength = this.serverSupports['CHANNELLEN'] |
+                           this.options.maxChannelLength;
+
+    return channel.slice(0, maxChannelLength)
 };
 
 client.prototype._addListeners = function(events, callback) {
