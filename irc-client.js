@@ -25,45 +25,16 @@ var client = module.exports = function(options) {
     this._joinedChannels = {};
     this._pendingChannels = {};
 
+    this._init();
+
     if (this.options.autoConnect) {
         this.connect().done();
     }
 };
 util.inherits(client, events.EventEmitter);
 
-client.prototype.connect = function() {
-    var deferred = q.defer();
-    var promise = deferred.promise;
+client.prototype._init = function() {
     var self = this;
-
-    function onConnect() {
-        self._ircstream = ircstream(self._socket);
-        self._ircstream.on('readable', emitMessagesOnReadable);
-
-        self.on('PING', respondToPing);
-        self.on(irccodes.RPL_BOUNCE, checkForRPL_ISUPPORT);
-
-        self._debug('Connected');
-        self._emitNextTick('connect');
-
-        deferred.resolve(
-            q.all([self.nick(self.options.nick), self.user()]).thenResolve(this)
-        );
-    };
-
-    function onError(errorObject) {
-        deferred.reject(errorObject);
-    };
-
-    function emitMessagesOnReadable() {
-        var data;
-        while ((data = self._ircstream.read()) !== null) {
-            self._debug(data.raw);
-            self._emitNextTick('message', data);
-            self._emitNextTick(data.command, data);
-        }
-    };
-
     function respondToPing(message) {
         self._ircstream.write({command: 'PONG', parameters: message.parameters});
     };
@@ -94,6 +65,40 @@ client.prototype.connect = function() {
                     }
                 }
             }
+        }
+    };
+
+    self.on('PING', respondToPing);
+    self.on(irccodes.RPL_BOUNCE, checkForRPL_ISUPPORT);
+};
+
+client.prototype.connect = function() {
+    var deferred = q.defer();
+    var promise = deferred.promise;
+    var self = this;
+
+    function onConnect() {
+        self._ircstream = ircstream(self._socket);
+        self._ircstream.on('readable', emitMessagesOnReadable);
+
+        self._debug('Connected');
+        self._emitNextTick('connect');
+
+        deferred.resolve(
+            q.all([self.nick(self.options.nick), self.user()]).thenResolve(this)
+        );
+    };
+
+    function onError(errorObject) {
+        deferred.reject(errorObject);
+    };
+
+    function emitMessagesOnReadable() {
+        var data;
+        while ((data = self._ircstream.read()) !== null) {
+            self._debug(data.raw);
+            self._emitNextTick('message', data);
+            self._emitNextTick(data.command, data);
         }
     };
 
