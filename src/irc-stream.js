@@ -1,6 +1,8 @@
-var util = require('util');
-var duplex = require('readable-stream').Duplex;
-var split = require('split2');
+var util       = require('util');
+
+var duplex     = require('readable-stream').Duplex;
+var split      = require('split2');
+
 var ircmessage = require('./irc-message');
 
 var ircstream = module.exports = function(stream) {

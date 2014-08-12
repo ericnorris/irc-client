@@ -1,11 +1,13 @@
-var net = require('net');
-var util = require('util');
-var events = require('events');
-var debug = require('debug');
-var q = require('q');
-var defaults = require('./defaults');
+var net       = require('net');
+var util      = require('util');
+var events    = require('events');
+
+var debug     = require('debug');
+var q         = require('q');
+
+var defaults  = require('./defaults');
 var ircstream = require('./irc-stream');
-var irccodes = require('./irc-codes')
+var irccodes  = require('./irc-codes')
 
 var client = module.exports = function(options) {
     if (!(this instanceof client)) {
