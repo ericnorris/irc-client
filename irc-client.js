@@ -19,9 +19,9 @@ var client = module.exports = function(options) {
         debug.enable('irc-client');
     }
 
-    this.serverSupports = {};
     this._debug = debug('irc-client');
     this._pendingNickChange = null;
+    this.serverSupports = {};
     this._joinedChannels = {};
     this._pendingChannels = {};
 
@@ -72,7 +72,7 @@ client.prototype._init = function() {
     self.on(irccodes.RPL_BOUNCE, checkForRPL_ISUPPORT);
 };
 
-client.prototype.connect = function() {
+client.prototype.connect = function(callback) {
     var deferred = q.defer();
     var promise = deferred.promise;
     var self = this;
@@ -116,10 +116,10 @@ client.prototype.connect = function() {
     }).finally(function() {
         self._socket.removeListener('connect', onConnect);
         self._socket.removeListener('error', onError);
-    });
+    }).nodeify(callback);
 };
 
-client.prototype.nick = function(nick) {
+client.prototype.nick = function(nick, callback) {
     var nick = this._trimNick(nick);
     var deferred = q.defer();
     var promise = deferred.promise;
@@ -178,10 +178,10 @@ client.prototype.nick = function(nick) {
         self._removeListeners(retryEvents, retryNickChange);
         self._removeListeners(errorEvents, error);
         self._pendingNickChange = null;
-    });
+    }).nodeify(callback);
 };
 
-client.prototype.user = function() {
+client.prototype.user = function(callback) {
     var deferred = q.defer();
     var promise = deferred.promise;
 
@@ -209,10 +209,10 @@ client.prototype.user = function() {
     return promise.finally(function() {
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
-    });
+    }).nodeify(callback);
 };
 
-client.prototype.join = function(channel) {
+client.prototype.join = function(channel, callback) {
     var channel = this._trimChannel(channel);
     var deferred = q.defer();
     var promise = deferred.promise;
@@ -274,10 +274,10 @@ client.prototype.join = function(channel) {
         self._pendingChannels[channel] = null;
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
-    });
+    }).nodeify(callback);
 };
 
-client.prototype.part = function(channel, message) {
+client.prototype.part = function(channel, message, callback) {
     var channel = this._trimChannel(channel);
     var message = message ? message : '';
     var deferred = q.defer();
@@ -319,7 +319,7 @@ client.prototype.part = function(channel, message) {
     return promise.finally(function() {
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
-    });
+    }).nodeify(callback);
 };
 
 client.prototype.privmsg = function(target, message) {
@@ -327,7 +327,7 @@ client.prototype.privmsg = function(target, message) {
     return this;
 };
 
-client.prototype.whois = function(nick) {
+client.prototype.whois = function(nick, callback) {
     var deferred = q.defer();
     var promise = deferred.promise;
     var whoisResult = {
@@ -424,7 +424,7 @@ client.prototype.whois = function(nick) {
         self._removeListeners(bufferEvents, bufferWhoisData);
         self._removeListeners(successEvents, success);
         self._removeListeners(errorEvents, error);
-    });
+    }).nodeify(callback);
 };
 
 client.prototype.quit = function(quitMessage) {
