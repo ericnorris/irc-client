@@ -1,7 +1,7 @@
 {
-    "name": "irc-client",
+    "name": "yirc",
     "version": "1.0.0",
-    "description": "A Node.js irc client.",
+    "description": "Yet another node.js irc client.",
     "main": "./src/irc-client.js",
     "dependencies": {
         "debug": "^1.0.4",
