@@ -1,0 +1,224 @@
+/**
+ * Original grammar from https://tools.ietf.org/html/rfc2812#section-2.3.1
+ *
+ * message    =  [ ":" prefix SPACE ] command [ params ] crlf
+ * prefix     =  servername / ( nickname [ [ "!" user ] "@" host ] )
+ * command    =  1*letter / 3digit
+ * params     =  *14( SPACE middle ) [ SPACE ":" trailing ]
+ *            =/ 14( SPACE middle ) [ SPACE [ ":" ] trailing ]
+ *
+ * nospcrlfcl =  %x01-09 / %x0B-0C / %x0E-1F / %x21-39 / %x3B-FF
+ *               ; any octet except NUL, CR, LF, " " and ":"
+ * middle     =  nospcrlfcl *( ":" / nospcrlfcl )
+ * trailing   =  *( ":" / " " / nospcrlfcl )
+ *
+ * SPACE      =  %x20        ; space character
+ * crlf       =  %x0D %x0A   ; "carriage return" "linefeed"
+ */
+
+Message
+  = tags:OptionalTags pre:OptionalPrefix cmd:Command params:OptionalParameters CRLF
+    { return {tags: tags, prefix: pre, command: cmd, parameters: params};}
+
+OptionalTags
+  = tagsAndSpace:(Tags Space)?
+    { return tagsAndSpace ? tagsAndSpace[0] : {}; }
+
+OptionalParameters
+  = spaceAndParams:(Space Parameters)?
+    { return spaceAndParams ? spaceAndParams[1] : []; }
+
+OptionalPrefix
+  = prefixAndSpace:(Prefix Space)?
+  { return prefixAndSpace ? prefixAndSpace[0] : {}; }
+
+Tags
+  = TagPrefix tags:TagList
+    {
+        var map = Object.create(null);
+        for (var i = 0; i < tags.length; i++) {
+            map[tags[i].key] = tags[i].value;
+        }
+
+        return map;
+    }
+
+TagList
+  = head:Tag TagDelimiter tail:TagList
+    { return [head].concat(tail); }
+  / head:Tag
+    { return [head]; }
+
+Tag
+  = key:TagKey value:(TagKeyValueDelimiter TagValue)?
+    { return {key: key, value: value ? value[1] : true}}
+
+TagKey "message tag key"
+  = $((Vendor "/")? (Letter / Digit / "-")+)
+
+TagValue "message tag value"
+  = $(NonSpaceCRLFSemicolon)*
+
+TagDelimiter "tag delimiter (;)"
+  = ";"
+
+TagKeyValueDelimiter "tag key/value delimiter (=)"
+  = "="
+
+Vendor
+  = Host
+
+Prefix
+  = PrefixChar server:Servername
+    { return {servername: server}; }
+  / PrefixChar nick:Nickname user:UserWithPrefix host:HostWithPrefix
+    { return {nickname: nick, user: user, host: host};}
+  / PrefixChar nick:Nickname host:HostWithPrefix
+    { return {nickname: nick, host: host};}
+  / PrefixChar nick:Nickname
+    { return {nickname: nick}; }
+
+Nickname "nickname"
+  = $((Letter / SpecialChar) (Letter / Digit / SpecialChar / "-")*)
+
+UserWithPrefix
+  = UserPrefix user:User
+    { return user; }
+
+User "username"
+  = $(NonSpaceCRLFHostPrefix)+
+
+HostWithPrefix
+  = HostPrefix host:Host
+    { return host; }
+
+Host
+  = Hostname / HostAddress
+
+HostAddress
+  = IPv4Address / IPv6Address
+
+// The following IPv4 address PEG is adapter from:
+// http://tools.ietf.org/id/draft-ietf-sip-ipv6-abnf-fix-02.html#resolution-1
+
+IPv4Address "valid IPv4 address"
+  = $(DecimalOctet "." DecimalOctet "." DecimalOctet "." DecimalOctet)
+
+DecimalOctet
+  = "25" [0-5]       // 250-255
+  / "2" [0-4] Digit  // 200-249
+  / "1" Digit Digit  // 100-199
+  / [1-9] Digit      // 10-99
+  / Digit            // 0-9
+
+// The following IPv6 address PEG is from:
+// https://github.com/for-GET/core-pegjs/blob/e34d41427da1529/src/ietf/rfc3986-uri.pegjs#L102-L124
+
+IPv6Address "valid IPv6 address"
+  = $( h16_ h16_ h16_ h16_ h16_ h16_ ls32
+     / "::" h16_ h16_ h16_ h16_ h16_ ls32
+     / (h16)? "::" h16_ h16_ h16_ h16_ ls32
+     / (h16_? h16)? "::" h16_ h16_ h16_ ls32
+     / ((h16_ h16_?)? h16)? "::" h16_ h16_ ls32
+     / ((h16_ (h16_ h16_?)?)? h16)? "::" h16_ ls32
+     / ((h16_ (h16_ (h16_ h16_?)?)?)? h16)? "::" ls32
+     / ((h16_ (h16_ (h16_ (h16_ h16_?)?)?)?)? h16)? "::" h16
+     / ((h16_ (h16_ (h16_ (h16_ (h16_ h16_?)?)?)?)?)? h16)? "::")
+
+ls32
+  // least_significant 32 bits of address
+  = h16 ":" h16
+  / IPv4Address
+
+h16_
+  = h16 ":"
+
+h16
+  // 16 bits of address represented in hexadecimal
+  = $(HexDigit (HexDigit (HexDigit HexDigit?)?)?)
+
+// end of IPv6 address PEG
+
+Servername
+  = Hostname
+
+Hostname "hostname"
+  = $(Shortname+ ("." Shortname)+)
+
+Shortname
+  = (Letter / Digit ) (Letter / Digit / "-")*
+
+Command "command"
+  = $ (Letter+ / Digit Digit Digit)
+
+Parameters
+  = params:NormalParameters Space trailing:TrailingParameter
+    { return params.concat(trailing); }
+  / params:NormalParameters
+    { return params; }
+  / trailing:TrailingParameter
+    { return [trailing]; }
+
+NormalParameters
+  = head:Parameter Space tail:NormalParameters
+    { return [head].concat(tail); }
+  / head:Parameter
+    { return [head]; }
+
+Parameter "parameter"
+  = $(NonSpaceCRLFColon (NonSpaceCRLF)*)
+
+TrailingParameter
+  = TrailingParameterPrefix param:$TrailingParameterChar*
+    { return param; }
+
+TrailingParameterChar "trailing parameter"
+  = NonCRLF
+
+TagPrefix "message tag prefix (@)"
+  = "@"
+
+PrefixChar "prefix character (:)"
+  = ":"
+
+UserPrefix "user prefix (!)"
+  = "!"
+
+HostPrefix "host prefix (@)"
+  = "@"
+
+Letter
+  = [a-zA-Z]
+
+Digit
+  = [0-9]
+
+HexDigit
+  = Digit / [A-Fa-f]
+
+SpecialChar
+  = "[" / "]" / "\\" / "`" / "_" / "^" / "|" / "{" / "}"
+
+NonCRLF
+  = [^\r\n]
+
+NonSpaceCRLF
+  = [^ \r\n]
+
+NonSpaceCRLFHostPrefix
+  = [^ \r\n@]
+
+NonSpaceCRLFSemicolon
+  = [^ \r\n;]
+
+NonSpaceCRLFColon
+  = [^ \r\n:]
+
+Space "space"
+  = " "
+
+TrailingParameterPrefix "trailing parameter prefix (:)"
+  = ":"
+
+CRLF "CR+LF"
+  = "\n"
