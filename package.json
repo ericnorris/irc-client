@@ -1,21 +1,14 @@
 {
-    "name": "yirc",
-    "version": "1.0.0",
-    "description": "Yet another node.js irc client.",
-    "main": "./src/irc-client.js",
-    "dependencies": {
-        "debug": "^1.0.4",
-        "q": "^1.0.1",
-        "readable-stream": "^1.0.27-1",
-        "split2": "^0.1.2"
-    },
-    "devDependencies": {},
+    "name": "ircv3",
+    "version": "0.0.1",
+    "description": "An IRCv3-aware IRC client.",
     "repository": {
         "type": "git",
         "url": "https://github.com/ericnorris/irc-client.git"
     },
     "keywords": [
         "irc",
+        "ircv3",
         "client",
         "bot"
     ],
@@ -23,6 +16,5 @@
     "license": "MIT",
     "bugs": {
         "url": "https://github.com/ericnorris/irc-client/issues"
-    },
-    "homepage": "https://github.com/ericnorris/irc-client"
+    }
 }
